@@ -15,7 +15,8 @@ export const CHAPTERS: Chapter[] = [
   { n: 7, title: '撮影モード' },
   { n: 8, title: 'Log撮影' },
   { n: 9, title: 'レンズの収差' },
-  { n: 10, title: 'コラム' },
+  { n: 10, title: 'ライティング' },
+  { n: 99, title: 'コラム' },
 ];
 
 const bg = (a: { coc: Record<string, number> }) => Math.abs(a.coc.background ?? 0);

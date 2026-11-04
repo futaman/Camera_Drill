@@ -22,9 +22,7 @@ export function LessonsPage() {
       <nav className="lesson-nav">
         {CHAPTERS.map((ch) => (
           <div key={ch.n} className="lesson-chapter">
-            <h4>
-              {ch.n}. {ch.title}
-            </h4>
+            <h4>{ch.n < 90 ? `${ch.n}. ${ch.title}` : ch.title}</h4>
             {LESSONS.filter((l) => l.chapter === ch.n).map((l) => (
               <button key={l.id} className={`lesson-link ${l.id === lesson.id ? 'on' : ''}`} onClick={() => setCurrent(l.id)}>
                 <span className={`check ${completed[l.id] ? 'done' : ''}`}>{completed[l.id] ? '✓' : ''}</span>
@@ -165,7 +163,7 @@ function SimStepView(props: StepProps & { step: SimStep | ChallengeStep }) {
           <RichText text={step.body} />
           {step.kind === 'challenge' && <Goal step={step} passed={props.passed} onPass={props.onPass} />}
           {step.histogram && <Histogram />}
-          {step.controls.length > 0 && <ControlPanel controls={step.controls} />}
+          {step.controls.length > 0 && <ControlPanel controls={step.controls} paramIds={step.paramIds} />}
           <Metrics />
           <StepActions {...props} />
         </aside>

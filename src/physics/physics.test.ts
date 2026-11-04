@@ -7,6 +7,11 @@ import {
   MIDDLE_GRAY,
   SATURATION,
   airyDiskMm,
+  illuminance,
+  keyIntensity,
+  lightingBalance,
+  polar,
+  reflectorIlluminance,
   angleOfView,
   coc,
   cropFactor,
@@ -307,6 +312,45 @@ describe('収差と回折', () => {
   it('絞ると球面収差と周辺減光は減る', () => {
     expect(sphericalAmount(1, 2.8, 1.4)).toBeLessThan(sphericalAmount(1, 1.4, 1.4));
     expect(vignetteAmount(1, 5.6, 1.4)).toBeLessThan(vignetteAmount(1, 1.4, 1.4));
+  });
+});
+
+describe('スタジオの光', () => {
+  const base = { keyAzimuth: -60, keyElevation: 20, keyDistance: 2, keyPower: 0, fill: 0, reflector: 0 as const, reflectorAzimuth: 70, reflectorDistance: 1 };
+
+  it('逆二乗の法則: 距離が2倍で照度は 1/4（2段暗い）', () => {
+    expect(illuminance(8000, 4) / illuminance(8000, 2)).toBeCloseTo(0.25);
+    expect(keyIntensity(1) / keyIntensity(0)).toBeCloseTo(2);
+  });
+
+  it('方位角の向き', () => {
+    expect(polar(0, 0, 2).z).toBeCloseTo(2);
+    expect(polar(90, 0, 2).x).toBeCloseTo(2);
+    expect(polar(0, 90, 2).y).toBeCloseTo(2);
+  });
+
+  it('レフ板を入れると影の側が明るくなり、明暗差が縮まる', () => {
+    const none = lightingBalance(base);
+    const white = lightingBalance({ ...base, reflector: 1 });
+    const silver = lightingBalance({ ...base, reflector: 2 });
+    expect(white.reflectorLx).toBeGreaterThan(0);
+    expect(white.ratioStops).toBeLessThan(none.ratioStops);
+    expect(silver.reflectorLx).toBeGreaterThan(white.reflectorLx);
+  });
+
+  it('キーライトがレフ板の裏側にあると何も返らない', () => {
+    // レフ板はカメラ右、キーライトはレフ板の外側（さらに右の遠く）
+    expect(reflectorIlluminance(1, 90, 1, polar(90, 0, 3), 8000)).toBe(0);
+  });
+
+  it('レフ板を離すと返る光が減る', () => {
+    const near = lightingBalance({ ...base, reflector: 1, reflectorDistance: 0.8 });
+    const far = lightingBalance({ ...base, reflector: 1, reflectorDistance: 2 });
+    expect(far.reflectorLx).toBeLessThan(near.reflectorLx);
+  });
+
+  it('黒レフは環境光を減らして明暗差を広げる', () => {
+    expect(lightingBalance({ ...base, reflector: 3, reflectorAzimuth: 180 }).ratioStops).toBeGreaterThan(lightingBalance(base).ratioStops);
   });
 });
 

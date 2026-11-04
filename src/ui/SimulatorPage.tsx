@@ -6,7 +6,7 @@ import { useSimulatorRig } from '../store/rig';
 import { useSettings } from '../store/settings';
 import { ControlPanel } from './ControlPanel';
 import { DofBar, Histogram, InfoBar, TopView } from './Readouts';
-import { RigProvider, useEngineRef, useRigApi } from './RigContext';
+import { RigProvider, useEngineRef, useRig, useRigApi } from './RigContext';
 import { Viewfinder } from './Viewfinder';
 
 export function SimulatorPage() {
@@ -22,6 +22,7 @@ function Simulator() {
   const rigApi = useRigApi();
   const dofBar = useSettings((s) => s.dofBar);
   const topView = useSettings((s) => s.topView);
+  const sceneId = useRig((r) => r.sceneId);
   const [capturing, setCapturing] = useState(false);
   const [shots, setShots] = useState<Shot[]>([]);
   const [viewing, setViewing] = useState<number[]>([]);
@@ -81,7 +82,7 @@ function Simulator() {
         <Viewfinder capturing={capturing} />
         <InfoBar />
         {dofBar && <DofBar />}
-        {topView && <TopView />}
+        {(topView || sceneId === 'studio') && <TopView />}
         {shots.length > 0 && (
           <div className="shot-strip">
             <span className="muted">撮った写真（クリックで表示、2枚選ぶと比較）</span>

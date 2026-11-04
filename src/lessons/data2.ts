@@ -1,6 +1,7 @@
-// 講座の内容（Phase 2 以降: センササイズ、画角、光と明るさ、撮影モード、Log、収差、コラム）。
+// 講座の内容（Phase 2 以降: センササイズ、画角、光と明るさ、撮影モード、Log、収差、ライティング、コラム）。
 
 import { exposureOk, subjectSharp } from '../store/analysis';
+import { LIGHTING_LESSONS } from './lighting';
 import type { Lesson } from './types';
 
 export const LESSONS_2: Lesson[] = [
@@ -609,10 +610,12 @@ Log で撮ったままの映像は、コントラストの低い**眠い絵**に
     summary: ['絞りすぎると回折で全体が甘くなる', 'にじみの直径は F値に比例する', '一番シャープなのは F5.6〜F8 あたりが多い'],
   },
 
+  ...LIGHTING_LESSONS,
+
   // ───────── コラム ─────────
   {
     id: 'C-1',
-    chapter: 10,
+    chapter: 99,
     title: 'APS-Cは望遠に強い？',
     steps: [
       {

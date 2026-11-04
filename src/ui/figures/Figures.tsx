@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { FigureId } from '../../lessons/types';
 import { Chromatic, Compression, CropDemo, Diffraction, Distortion, EvScale, LogCurve, Modes, Sensors, Spherical } from './Figures2';
+import { InverseSquare, LightAngles, LightSize } from './Figures3';
 
 export function Figure({ id }: { id: FigureId }) {
   switch (id) {
@@ -38,6 +39,12 @@ export function Figure({ id }: { id: FigureId }) {
       return <Diffraction />;
     case 'cropDemo':
       return <CropDemo />;
+    case 'lightSize':
+      return <LightSize />;
+    case 'lightAngles':
+      return <LightAngles />;
+    case 'inverseSquare':
+      return <InverseSquare />;
   }
 }
 

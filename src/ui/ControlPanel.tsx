@@ -39,11 +39,12 @@ export type ControlId =
   | 'fx'
   | 'scene'
   | 'lighting'
+  | 'presets'
   | 'params';
 
 export const ALL_CONTROLS: ControlId[] = [
   'mode', 'f', 'ss', 'iso', 'comp', 'metering', 'profile', 'body', 'crop', 'lens', 'focal', 'framingLock', 'focus',
-  'stabilization', 'tripod', 'fx', 'scene', 'lighting', 'params',
+  'stabilization', 'tripod', 'fx', 'scene', 'lighting', 'presets', 'params',
 ];
 
 const MODES: { id: ShootingMode; hint: string }[] = [
@@ -72,7 +73,7 @@ const MF_FAR = 100;
 const toSlider = (m: number, min: number) => Math.log(m / min) / Math.log(MF_FAR / min);
 const fromSlider = (v: number, min: number) => min * (MF_FAR / min) ** v;
 
-export function ControlPanel({ controls = ALL_CONTROLS }: { controls?: ControlId[] }) {
+export function ControlPanel({ controls = ALL_CONTROLS, paramIds }: { controls?: ControlId[]; paramIds?: string[] }) {
   const rig = useRig((r) => r);
   const api = useRigApi();
   const tel = useTelemetry();
@@ -83,13 +84,16 @@ export function ControlPanel({ controls = ALL_CONTROLS }: { controls?: ControlId
   const isoMin = nearestStopIndex(ISO_STOPS, getProfile(rig.profile).minIso);
   const isoMax = nearestStopIndex(ISO_STOPS, ISO_NATIVE_MAX);
 
+  // 講座では paramIds で触れる項目を絞れる
+  const visibleParams = paramIds ? scene.params.filter((p) => paramIds.includes(p.id)) : scene.params;
+
   const fAuto = rig.mode === 'S' || rig.mode === 'P';
   const ssAuto = rig.mode === 'A' || rig.mode === 'P';
 
   const exposure = has('mode') || has('f') || has('ss') || has('iso') || has('comp') || has('metering') || has('profile');
   const optics = has('body') || has('crop') || has('lens') || has('focal') || has('framingLock') || has('focus');
   const support = has('stabilization') || has('tripod');
-  const sceneCtl = has('scene') || has('lighting') || (has('params') && scene.params.length > 0);
+  const sceneCtl = has('scene') || has('lighting') || has('presets') || (has('params') && scene.params.length > 0);
 
   return (
     <div className="control-panel">
@@ -350,7 +354,7 @@ export function ControlPanel({ controls = ALL_CONTROLS }: { controls?: ControlId
               </select>
             </label>
           )}
-          {has('lighting') && (
+          {has('lighting') && scene.lighting.length > 1 && (
             <label className="field">
               <span>明るさ</span>
               <select value={rig.lighting} onChange={(e) => api.getState().update({ lighting: e.target.value })}>
@@ -362,8 +366,32 @@ export function ControlPanel({ controls = ALL_CONTROLS }: { controls?: ControlId
               </select>
             </label>
           )}
+          {has('presets') && scene.presets && (
+            <div className="field">
+              <span>定番のライティング</span>
+              <div className="preset-list">
+                {scene.presets.map((p) => (
+                  <button key={p.id} onClick={() => api.getState().applyParams(p.params)}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {has('params') &&
-            scene.params.map((p) => (
+            visibleParams.map((p) =>
+              p.options ? (
+                <label className="field" key={p.id}>
+                  <span>{p.label}</span>
+                  <select value={rig.params[p.id] ?? p.default} onChange={(e) => api.getState().setParam(p.id, Number(e.target.value))}>
+                    {p.options.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
               <label className="field" key={p.id}>
                 <span>
                   {p.label}{' '}
@@ -381,7 +409,8 @@ export function ControlPanel({ controls = ALL_CONTROLS }: { controls?: ControlId
                   onChange={(e) => api.getState().setParam(p.id, Number(e.target.value))}
                 />
               </label>
-            ))}
+              ),
+            )}
         </section>
       )}
     </div>

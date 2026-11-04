@@ -18,7 +18,10 @@ export type FigureId =
   | 'spherical'
   | 'distortion'
   | 'diffraction'
-  | 'cropDemo';
+  | 'cropDemo'
+  | 'lightSize'
+  | 'lightAngles'
+  | 'inverseSquare';
 
 interface StepBase {
   title: string;
@@ -37,6 +40,8 @@ export interface SimStep extends StepBase {
   kind: 'sim';
   rig: RigInit;
   controls: ControlId[];
+  /** controls に params があるとき、触れる項目を絞る */
+  paramIds?: string[];
   histogram?: boolean;
   dofBar?: boolean;
   topView?: boolean;
@@ -46,6 +51,8 @@ export interface ChallengeStep extends StepBase {
   kind: 'challenge';
   rig: RigInit;
   controls: ControlId[];
+  /** controls に params があるとき、触れる項目を絞る */
+  paramIds?: string[];
   histogram?: boolean;
   dofBar?: boolean;
   topView?: boolean;

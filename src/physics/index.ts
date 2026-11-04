@@ -7,3 +7,4 @@ export * from './shake';
 export * from './auto';
 export * from './profile';
 export * from './aberration';
+export * from './studio';

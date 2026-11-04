@@ -14,8 +14,12 @@ import {
   getBody,
   mmToPx,
   permissibleCoc,
+  lightingBalance,
   signedCoc,
   type DepthOfField,
+  type LightingBalance,
+  type ReflectorKind,
+  type StudioLightSetup,
   type ProfileId,
   type Sensor,
   type ShootingMode,
@@ -61,6 +65,10 @@ export interface Analysis {
   horizontalAov: number;
   cameraDistance: number;
   lighting: string;
+  /** シーンの調整項目の値 */
+  params: Record<string, number>;
+  /** スタジオの光の明暗差など（スタジオ以外では null） */
+  studio: LightingBalance | null;
   ready: boolean;
 }
 
@@ -138,7 +146,23 @@ export function analyze(rig: RigState, tel: Telemetry | null): Analysis {
     horizontalAov: angleOfView(rig.focal, sensor.width),
     cameraDistance: rig.params.distance ?? 0,
     lighting: rig.lighting,
+    params: rig.params,
+    studio: rig.sceneId === 'studio' ? lightingBalance(studioSetup(rig.params)) : null,
     ready: tel !== null,
+  };
+}
+
+/** スタジオシーンの調整項目を、光の計算の入力に変換する */
+export function studioSetup(p: Record<string, number>): StudioLightSetup {
+  return {
+    keyAzimuth: p.keyAz,
+    keyElevation: p.keyEl,
+    keyDistance: p.keyDist,
+    keyPower: p.keyPower,
+    fill: p.fill,
+    reflector: p.reflector as ReflectorKind,
+    reflectorAzimuth: p.reflAz,
+    reflectorDistance: p.reflDist,
   };
 }
 

@@ -1,6 +1,6 @@
 // ファインダー周りの表示: 情報バー（露出計つき）、ヒストグラム、被写界深度バー。
 
-import { F_STOPS, ISO_STOPS, SS_STOPS, formatStops } from '../physics';
+import { F_STOPS, ISO_STOPS, SS_STOPS, formatStops, polar } from '../physics';
 import { SHARP_PX } from '../store/analysis';
 import { useAnalysis, useRig, useTelemetry } from './RigContext';
 
@@ -91,6 +91,64 @@ export function Histogram() {
 
 /** 上から見た図。カメラ・被写体・背景の位置と画角を示す（距離は対数ではなく実距離） */
 export function TopView() {
+  const sceneId = useRig((r) => r.sceneId);
+  return sceneId === 'studio' ? <StudioDiagram /> : <CameraTopView />;
+}
+
+/** スタジオのライトの配置を上から見た図と、光の明暗差 */
+function StudioDiagram() {
+  const a = useAnalysis();
+  const p = a.params;
+  const W = 640;
+  const H = 150;
+  const cx = W / 2;
+  const cy = 62;
+  const scale = 21;
+  // 方位角 0 がカメラ側（図の下）
+  const at = (az: number, d: number) => {
+    const q = polar(az, 0, d);
+    return { x: cx + q.x * scale, y: cy + q.z * scale };
+  };
+  const key = at(p.keyAz, p.keyDist * Math.cos((p.keyEl * Math.PI) / 180));
+  const refl = at(p.reflAz, p.reflDist);
+  const cam = at(0, Math.min(p.distance, 3.8));
+  const reflOn = p.reflector > 0;
+  return (
+    <div className="top-view">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="ライトとレフ板の配置を上から見た図">
+        <line x1={key.x} y1={key.y} x2={cx} y2={cy} className="tv-beam" />
+        {reflOn && <line x1={key.x} y1={key.y} x2={refl.x} y2={refl.y} className="tv-beam thin" />}
+        {reflOn && <line x1={refl.x} y1={refl.y} x2={cx} y2={cy} className="tv-beam thin" />}
+        <circle cx={cx} cy={cy} r={6} className="tv-subject" />
+        <rect x={cam.x - 7} y={cam.y - 5} width={14} height={10} rx={2} className="tv-cam-studio" />
+        <circle cx={key.x} cy={key.y} r={Math.max(4, (p.keySize / 2) * scale)} className="tv-key" />
+        {reflOn && <circle cx={refl.x} cy={refl.y} r={8} className={p.reflector === 3 ? 'tv-refl black' : 'tv-refl'} />}
+        <text x={key.x} y={key.y - 8} textAnchor="middle" className="tv-text">
+          キー
+        </text>
+        {reflOn && (
+          <text x={refl.x} y={refl.y - 11} textAnchor="middle" className="tv-text">
+            レフ板
+          </text>
+        )}
+        <text x={cam.x + 11} y={cam.y + 4} className="tv-text">
+          カメラ
+        </text>
+      </svg>
+      {a.studio && (
+        <div className="dof-legend">
+          <span>
+            明暗差 <b>{a.studio.ratioStops.toFixed(1)}段</b>（当たる側 {Math.round(a.studio.keyLx + a.studio.fillLx)}lx / 影の側{' '}
+            {Math.round(a.studio.fillLx)}lx）
+          </span>
+          <span className="muted">レフ板が返す光 {Math.round(a.studio.reflectorLx)}lx</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CameraTopView() {
   const a = useAnalysis();
   const hasColumns = useRig((r) => r.sceneId === 'garden');
   const camD = a.cameraDistance;

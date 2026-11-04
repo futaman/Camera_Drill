@@ -54,6 +54,7 @@ export interface RigActions {
   setProfile(id: ProfileId): void;
   setFramingLock(on: boolean): void;
   setParam(id: string, value: number): void;
+  applyParams(params: Record<string, number>): void;
 }
 
 export type Rig = RigState & RigActions;
@@ -163,6 +164,9 @@ function actions(set: StoreApi<Rig>['setState'], get: StoreApi<Rig>['getState'])
     setFramingLock(on) {
       const { params, focal } = get();
       set({ framingLock: on ? (params.distance ?? 2) / focal : null });
+    },
+    applyParams(params) {
+      set({ params: { ...get().params, ...params } });
     },
     setParam(id, value) {
       const patch: Partial<RigState> = { params: { ...get().params, [id]: value } };

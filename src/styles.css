@@ -1159,3 +1159,52 @@ input[type='checkbox'] {
   fill: none;
   stroke: var(--focus);
 }
+
+/* ───── スタジオ ───── */
+.preset-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.preset-list button {
+  padding: 3px 10px;
+  font-size: 13px;
+}
+.tv-beam {
+  stroke: rgba(242, 177, 52, 0.7);
+  stroke-width: 1.5;
+}
+.tv-beam.thin {
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.tv-key {
+  fill: rgba(255, 244, 214, 0.9);
+  stroke: var(--accent);
+}
+.tv-refl {
+  fill: #e6e6e6;
+  stroke: #999;
+}
+.tv-refl.black {
+  fill: #111;
+}
+.tv-cam-studio {
+  fill: var(--accent);
+}
+
+.fig-light-src {
+  fill: #fff4d6;
+  stroke: var(--accent);
+}
+.fig-penumbra {
+  fill: #6b6f75;
+}
+.fig-umbra {
+  fill: #0c0d0e;
+}
+.fig-orbit {
+  fill: none;
+  stroke: var(--line);
+  stroke-dasharray: 3 4;
+}

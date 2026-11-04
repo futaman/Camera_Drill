@@ -284,6 +284,8 @@ export class Engine {
       this.sceneInst!.setLighting(s.lighting);
       this.shadowDirty = true;
     }
+    // ライトの位置はパラメータで変わるので、変わったら影を描き直す
+    if (this.settings?.params !== s.params) this.shadowDirty = true;
     this.settings = s;
     if (s.focusMode === 'mf') this.focusM = Math.max(s.minFocusM, s.focusM);
     if (qualityChanged) {
