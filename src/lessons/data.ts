@@ -1,6 +1,7 @@
-// 講座の内容（Phase 1: 0〜4章の基本）。課題の判定はエンジンの計測値と物理計算で行う。
+// 講座の内容（0〜4章の基本）。課題の判定はエンジンの計測値と物理計算で行う。続きは data2.ts。
 
 import { exposureOk, subjectSharp } from '../store/analysis';
+import { LESSONS_2 } from './data2';
 import type { Chapter, Lesson } from './types';
 
 export const CHAPTERS: Chapter[] = [
@@ -9,11 +10,17 @@ export const CHAPTERS: Chapter[] = [
   { n: 2, title: 'シャッタースピード' },
   { n: 3, title: 'ISOとノイズ' },
   { n: 4, title: 'ボケ' },
+  { n: 5, title: '画角と遠近感' },
+  { n: 6, title: '光と明るさ' },
+  { n: 7, title: '撮影モード' },
+  { n: 8, title: 'Log撮影' },
+  { n: 9, title: 'レンズの収差' },
+  { n: 10, title: 'コラム' },
 ];
 
 const bg = (a: { coc: Record<string, number> }) => Math.abs(a.coc.background ?? 0);
 
-export const LESSONS: Lesson[] = [
+const LESSONS_1: Lesson[] = [
   // ───────── 0. はじめに ─────────
   {
     id: '0-1',
@@ -332,7 +339,7 @@ F値の副作用は**ボケ**です。F値を小さくすると背景がボケ�
         histogram: true,
         goalLabel: '被写体ブレを 1px 未満にして、露出計は ±1段以内',
         goal: (a) => a.motionPx < 1 && exposureOk(a, 1),
-        hint: '1/500 秒より速くするのが目安です。暗くなった分は ISO を上げましょう。',
+        hint: '1/640 秒より速くするのが目安です。暗くなった分は ISO を上げましょう。',
       },
       {
         kind: 'challenge',
@@ -469,7 +476,7 @@ ISO を上げると、少ない光で写真が明るくなるように設定が�
         kind: 'challenge',
         title: '奥の壁にピントを合わせる',
         body: 'いまは胸像にピントが合っています。ファインダーの奥の壁（絵や本棚）をクリックして、そちらにピントを合わせてください。',
-        rig: { sceneId: 'atelier', lensId: 'prime-50', f: 2, ss: 1 / 250, iso: 400 },
+        rig: { sceneId: 'atelier', lensId: 'prime-50', f: 2, ss: 1 / 500, iso: 400 },
         controls: [],
         dofBar: true,
         goalLabel: '奥の壁のボケを 1.6px 以下にする',
@@ -544,7 +551,7 @@ ISO を上げると、少ない光で写真が明るくなるように設定が�
         kind: 'challenge',
         title: '近づいてボカす',
         body: 'F値は F2.8 に固定です。カメラの位置（被写体までの距離）を変えて、背景を大きくボカしましょう。',
-        rig: { sceneId: 'atelier', lensId: 'prime-50', f: 2.8, ss: 1 / 125, iso: 400, params: { distance: 3.5 } },
+        rig: { sceneId: 'atelier', lensId: 'prime-50', f: 2.8, ss: 1 / 400, iso: 400, params: { distance: 3.5 } },
         controls: ['params'],
         dofBar: true,
         goalLabel: '胸像にピントが合っていて、背景のボケが 20px 以上',
@@ -578,7 +585,7 @@ F値は「焦点距離 ÷ 穴の直径」でした。逆に言えば、**穴の�
         kind: 'challenge',
         title: '望遠でボカす',
         body: 'ズームレンズ（F2.8固定）を使います。焦点距離とカメラの位置を変えて、背景を大きくボカしましょう。',
-        rig: { sceneId: 'atelier', lensId: 'zoom-24-70', focal: 24, f: 2.8, ss: 1 / 125, iso: 400, params: { distance: 1.2 } },
+        rig: { sceneId: 'atelier', lensId: 'zoom-24-70', focal: 24, f: 2.8, ss: 1 / 400, iso: 400, params: { distance: 1.2 } },
         controls: ['focal', 'params'],
         dofBar: true,
         goalLabel: '胸像にピントが合っていて、背景のボケが 15px 以上',
@@ -589,3 +596,8 @@ F値は「焦点距離 ÷ 穴の直径」でした。逆に言えば、**穴の�
     summary: ['有効口径（穴の直径）= 焦点距離 ÷ F値', '同じ F値なら望遠ほど穴が大きく、ボケる', '望遠は背景を拡大するので、ボケも大きく見える'],
   },
 ];
+
+/** 章の順、章の中は番号の順 */
+export const LESSONS: Lesson[] = [...LESSONS_1, ...LESSONS_2].sort(
+  (a, b) => a.chapter - b.chapter || a.id.localeCompare(b.id, undefined, { numeric: true }),
+);

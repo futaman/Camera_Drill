@@ -2,4 +2,8 @@ export * from './stops';
 export * from './exposure';
 export * from './optics';
 export * from './sensor';
+export * from './sensors';
 export * from './shake';
+export * from './auto';
+export * from './profile';
+export * from './aberration';

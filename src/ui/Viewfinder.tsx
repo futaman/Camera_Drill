@@ -6,7 +6,6 @@ import { useEngineRef, useRig, useRigApi, useSetTelemetry } from './RigContext';
 
 /** ライブビュー。クリックした位置にAFポイントを移す */
 export function Viewfinder({ capturing = false }: { capturing?: boolean }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const rigApi = useRigApi();
   const engineRef = useEngineRef();
@@ -17,13 +16,16 @@ export function Viewfinder({ capturing = false }: { capturing?: boolean }) {
   const grid = useSettings((s) => s.grid);
 
   useEffect(() => {
-    const canvas = canvasRef.current!;
+    // コンテキストを解放したキャンバスは使い回せないので、マウントごとに作る
+    const canvas = document.createElement('canvas');
+    boxRef.current!.prepend(canvas);
     let engine: Engine;
     try {
       engine = new Engine(canvas);
     } catch (e) {
       setError('WebGL2 を初期化できませんでした。最新の Chrome / Edge でお試しください。');
       console.error(e);
+      canvas.remove();
       return;
     }
     engineRef.current = engine;
@@ -47,6 +49,7 @@ export function Viewfinder({ capturing = false }: { capturing?: boolean }) {
       unsubTel();
       engine.dispose();
       engineRef.current = null;
+      canvas.remove();
     };
   }, [rigApi, engineRef, setTelemetry]);
 
@@ -60,7 +63,6 @@ export function Viewfinder({ capturing = false }: { capturing?: boolean }) {
 
   return (
     <div className="viewfinder" ref={boxRef} onClick={onClick}>
-      <canvas ref={canvasRef} />
       {grid && <div className="vf-grid" />}
       {focusMode === 'af' && (
         <div className="vf-af" style={{ left: `${afPoint[0] * 100}%`, top: `${afPoint[1] * 100}%` }} />

@@ -127,6 +127,64 @@ void main() {
 }
 `;
 
+/**
+ * レンズの収差と回折。ボケの後、露出の前に、リニアな輝度のまま適用する。
+ * 歪曲は uv の放射方向のずれ、倍率色収差は色ごとの拡大率の違いとして扱う。
+ */
+export const lensFrag = /* glsl */ `
+uniform sampler2D tColor;
+uniform vec2 uTexel;
+uniform float uAspect;
+uniform float uCa;        // 色ごとの拡大率の差
+uniform float uDist;      // 正で樽型、負で糸巻き型
+uniform float uVignette;  // 隅の減光量
+uniform float uSoftR;     // 球面収差のにじみの半径 [px]
+uniform float uSoftMix;   // にじみの混ざる割合
+uniform float uDiffR;     // 回折のボケの半径 [px]
+varying vec2 vUv;
+const float GOLDEN_ANGLE = 2.39996323;
+
+vec3 disk(vec2 uv, float radius) {
+  vec3 sum = texture2D(tColor, uv).rgb;
+  if (radius < 0.5) return sum;
+  for (int i = 1; i < 16; i++) {
+    float r = sqrt(float(i) / 15.0) * radius;
+    float a = float(i) * GOLDEN_ANGLE;
+    sum += texture2D(tColor, uv + vec2(cos(a), sin(a)) * uTexel * r).rgb;
+  }
+  return sum / 16.0;
+}
+
+vec3 lens(vec2 uv) {
+  vec3 c = disk(uv, uDiffR);
+  if (uSoftMix > 0.0) c = mix(c, disk(uv, uSoftR), uSoftMix);
+  return c;
+}
+
+vec2 warp(vec2 p, float scale) {
+  float r2 = dot(p, p);
+  float corner = dot(vec2(uAspect, 1.0), vec2(uAspect, 1.0)) * 0.25;
+  // 樽型では四隅が画面内に収まるよう全体を拡大する
+  float norm = uDist > 0.0 ? 1.0 + uDist * corner : 1.0;
+  vec2 q = p * (1.0 + uDist * r2) / norm * scale;
+  return q / vec2(uAspect, 1.0) + 0.5;
+}
+
+void main() {
+  vec2 p = (vUv - 0.5) * vec2(uAspect, 1.0);
+  vec3 color;
+  if (uCa > 0.0) {
+    color = vec3(lens(warp(p, 1.0 - uCa)).r, lens(warp(p, 1.0)).g, lens(warp(p, 1.0 + uCa)).b);
+  } else {
+    color = lens(warp(p, 1.0));
+  }
+  float corner = dot(vec2(uAspect, 1.0), vec2(uAspect, 1.0)) * 0.25;
+  float rn = dot(p, p) / corner;
+  color *= 1.0 - uVignette * rn * rn;
+  gl_FragColor = vec4(color, 1.0);
+}
+`;
+
 /** 測光用の縮小（各セルの平均輝度） */
 export const meterFrag = /* glsl */ `
 uniform sampler2D tSrc;
@@ -152,6 +210,10 @@ export const finalFrag = /* glsl */ `
 uniform sampler2D tColor;
 uniform float uScale;     // 輝度 → 正規化露光量
 uniform float uSat;       // 飽和する露光量
+uniform float uStdSat;    // 標準プロファイルの飽和する露光量
+uniform int uProfile;     // 0: 標準, 1: Log, 2: Log + LUT
+uniform float uLogGray;
+uniform float uLogSlope;
 uniform float uWell;      // 飽和電子数
 uniform float uRead;      // 読み出しノイズ [e-]
 uniform float uSeed;
@@ -190,10 +252,21 @@ void main() {
     v = e / uWell * uSat;
   }
 
-  vec3 x = clamp(v / uSat, 0.0, 1.0);
-  vec3 lin = pow(x, vec3(0.835));
-  vec3 y = toSrgb(lin);
-  y = mix(y, smoothstep(0.0, 1.0, y), 0.2);
+  v = clamp(v, 0.0, uSat);
+  vec3 y;
+  if (uProfile == 1) {
+    // Log の記録値をそのまま表示する（眠い絵になる）
+    y = clamp(uLogGray + uLogSlope * log2(max(v, 1e-5) / 0.18), 0.04, 1.0);
+  } else {
+    vec3 x = v / uStdSat;
+    if (uProfile == 2) {
+      // 中間調は標準と同じにして、余ったハイライトをなだらかに収める
+      vec3 over = max(x - 0.5, 0.0);
+      x = min(x, vec3(0.5)) + 0.5 * (1.0 - exp(-over / 1.6));
+    }
+    y = toSrgb(pow(clamp(x, 0.0, 1.0), vec3(0.835)));
+    y = mix(y, smoothstep(0.0, 1.0, y), 0.2);
+  }
 
   if (uZebra > 0.5 && clipped) {
     float stripe = step(6.0, mod(gl_FragCoord.x + gl_FragCoord.y + uTime * 40.0, 12.0));

@@ -2,7 +2,23 @@ import type { Analysis } from '../store/analysis';
 import type { RigInit } from '../store/rig';
 import type { ControlId } from '../ui/ControlPanel';
 
-export type FigureId = 'pipeline' | 'stops' | 'aperture' | 'equivalent' | 'coc' | 'focal';
+export type FigureId =
+  | 'pipeline'
+  | 'stops'
+  | 'aperture'
+  | 'equivalent'
+  | 'coc'
+  | 'focal'
+  | 'sensors'
+  | 'compression'
+  | 'ev'
+  | 'modes'
+  | 'log'
+  | 'chromatic'
+  | 'spherical'
+  | 'distortion'
+  | 'diffraction'
+  | 'cropDemo';
 
 interface StepBase {
   title: string;
@@ -13,6 +29,8 @@ interface StepBase {
 export interface TextStep extends StepBase {
   kind: 'text';
   figure?: FigureId;
+  /** 図を本文の後に置く */
+  figureAfter?: boolean;
 }
 
 export interface SimStep extends StepBase {
@@ -21,6 +39,7 @@ export interface SimStep extends StepBase {
   controls: ControlId[];
   histogram?: boolean;
   dofBar?: boolean;
+  topView?: boolean;
 }
 
 export interface ChallengeStep extends StepBase {
@@ -29,6 +48,7 @@ export interface ChallengeStep extends StepBase {
   controls: ControlId[];
   histogram?: boolean;
   dofBar?: boolean;
+  topView?: boolean;
   /** 達成条件の説明（画面に表示） */
   goalLabel: string;
   goal(a: Analysis): boolean;

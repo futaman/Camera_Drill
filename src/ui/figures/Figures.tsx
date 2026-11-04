@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { FigureId } from '../../lessons/types';
+import { Chromatic, Compression, CropDemo, Diffraction, Distortion, EvScale, LogCurve, Modes, Sensors, Spherical } from './Figures2';
 
 export function Figure({ id }: { id: FigureId }) {
   switch (id) {
@@ -17,6 +18,26 @@ export function Figure({ id }: { id: FigureId }) {
       return <Coc />;
     case 'focal':
       return <Focal />;
+    case 'sensors':
+      return <Sensors />;
+    case 'compression':
+      return <Compression />;
+    case 'ev':
+      return <EvScale />;
+    case 'modes':
+      return <Modes />;
+    case 'log':
+      return <LogCurve />;
+    case 'chromatic':
+      return <Chromatic />;
+    case 'spherical':
+      return <Spherical />;
+    case 'distortion':
+      return <Distortion />;
+    case 'diffraction':
+      return <Diffraction />;
+    case 'cropDemo':
+      return <CropDemo />;
   }
 }
 

@@ -588,7 +588,9 @@ input[type='checkbox'] {
   display: flex;
   gap: 8px;
   margin-top: 4px;
-  flex-wrap: wrap;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
 }
 .shot-thumb {
   padding: 0;
@@ -597,6 +599,7 @@ input[type='checkbox'] {
   overflow: hidden;
   width: 96px;
   height: 64px;
+  flex: none;
 }
 .shot-thumb.on {
   border-color: var(--accent);
@@ -992,4 +995,167 @@ input[type='checkbox'] {
   margin: 0 0 6px;
   font-size: 14px;
   color: var(--muted);
+}
+
+/* ───── 俯瞰図 ───── */
+.top-view {
+  width: min(100%, calc((100vh - 290px) * 1.5));
+  margin: 8px auto 0;
+  padding: 6px 14px;
+  background: var(--panel);
+  border-radius: 6px;
+}
+.top-view svg {
+  width: 100%;
+  display: block;
+}
+.top-view .dof-legend {
+  margin-top: 2px;
+}
+.tv-fov {
+  fill: rgba(242, 177, 52, 0.14);
+  stroke: rgba(242, 177, 52, 0.5);
+}
+.tv-axis {
+  stroke: #333;
+  stroke-dasharray: 3 4;
+}
+.tv-camera {
+  fill: var(--accent);
+}
+.tv-subject {
+  fill: #f3e9cf;
+}
+.tv-column {
+  fill: #8a8d92;
+}
+.tv-text {
+  fill: var(--text);
+  font-size: 11px;
+}
+.field-note {
+  display: block;
+  font-size: 11px;
+  margin-top: 2px;
+}
+.step-sim .top-view {
+  width: min(100%, calc((100vh - 330px) * 1.5));
+}
+
+/* ───── コラム ───── */
+.crop-demo {
+  max-width: 820px;
+  margin: 6px 0 16px;
+}
+.crop-demo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.crop-demo-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+}
+.crop-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.crop-card {
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.crop-card h5 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+.crop-card canvas {
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  display: block;
+  border-radius: 4px;
+  image-rendering: pixelated;
+  background: #000;
+}
+.crop-card dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1px 8px;
+  margin: 6px 0 0;
+}
+.crop-card dt {
+  color: var(--muted);
+}
+.crop-card dd {
+  margin: 0;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+.lesson-link.column .lesson-id {
+  color: var(--accent);
+}
+
+.ib-mode {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ───── 図解（追加分） ───── */
+.fig-sensor-frame {
+  fill: none;
+  stroke: var(--line);
+  stroke-dasharray: 3 3;
+}
+.fig-sensor-area {
+  fill: rgba(242, 177, 52, 0.75);
+}
+.fig-text.ink {
+  fill: var(--accent-ink);
+  font-weight: 700;
+}
+.fig-ray {
+  stroke: rgba(242, 177, 52, 0.45);
+}
+.fig-bg-line {
+  stroke: #8a8d92;
+  stroke-width: 3;
+}
+.fig-bar {
+  fill: rgba(242, 177, 52, 0.55);
+}
+.fig-grid {
+  stroke: var(--line);
+}
+.fig-curve-std,
+.fig-curve-log {
+  fill: none;
+  stroke-width: 2.5;
+}
+.fig-curve-std {
+  stroke: var(--text);
+}
+.fig-curve-log {
+  stroke: var(--accent);
+}
+.fig-ray-c {
+  stroke-width: 1.2;
+  opacity: 0.85;
+}
+.fig-ray-y {
+  stroke: rgba(242, 177, 52, 0.75);
+  stroke-width: 1.1;
+}
+.fig-grid-line {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1;
+}
+.fig-pixel {
+  fill: none;
+  stroke: var(--focus);
 }

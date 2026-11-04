@@ -6,7 +6,7 @@ import { createRigStore } from '../store/rig';
 import { useProgress, useSettings } from '../store/settings';
 import { ControlPanel } from './ControlPanel';
 import { Figure } from './figures/Figures';
-import { DofBar, Histogram, InfoBar } from './Readouts';
+import { DofBar, Histogram, InfoBar, TopView } from './Readouts';
 import { RichText } from './RichText';
 import { RigProvider, useAnalysis } from './RigContext';
 import { Viewfinder } from './Viewfinder';
@@ -34,7 +34,6 @@ export function LessonsPage() {
             ))}
           </div>
         ))}
-        <p className="muted small">センササイズ・画角・圧縮効果などの章は Phase 2 で追加予定です。</p>
       </nav>
       <LessonView key={lesson.id} lesson={lesson} />
     </div>
@@ -56,7 +55,7 @@ function LessonView({ lesson }: { lesson: Lesson }) {
     <article className="lesson">
       <header className="lesson-head">
         <span className="muted">
-          {lesson.chapter}章 / {lesson.id}
+          {CHAPTERS.find((c) => c.n === lesson.chapter)?.title} / {lesson.id}
         </span>
         <h2>{lesson.title}</h2>
         <div className="step-dots">
@@ -128,8 +127,9 @@ function StepView(props: StepProps) {
     return (
       <section className="step-text">
         <h3>{step.title}</h3>
-        {step.figure && <Figure id={step.figure} />}
+        {step.figure && !step.figureAfter && <Figure id={step.figure} />}
         <RichText text={step.body} />
+        {step.figure && step.figureAfter && <Figure id={step.figure} />}
         <StepActions {...props} />
       </section>
     );
@@ -158,6 +158,7 @@ function SimStepView(props: StepProps & { step: SimStep | ChallengeStep }) {
           <Viewfinder />
           <InfoBar />
           {step.dofBar && <DofBar />}
+          {step.topView && <TopView />}
         </div>
         <aside className="step-sim-side">
           <h3>{step.title}</h3>

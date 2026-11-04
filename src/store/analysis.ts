@@ -3,18 +3,24 @@
 import { getLens } from '../camera/lenses';
 import {
   F_STOPS,
-  FULL_FRAME,
   ISO_STOPS,
   SS_STOPS,
   angleOfView,
+  apertureDiameter,
+  croppedMegapixels,
+  croppedSensor,
+  cropFactor,
   depthOfField,
+  getBody,
   mmToPx,
   permissibleCoc,
   signedCoc,
   type DepthOfField,
+  type ProfileId,
+  type Sensor,
+  type ShootingMode,
 } from '../physics';
-import type { EngineSettings, Telemetry } from '../render/Engine';
-import type { Quality } from '../render/Engine';
+import type { EngineSettings, Metering, Quality, Telemetry } from '../render/Engine';
 import type { RigState } from './rig';
 
 /** 錯乱円などの大きさは「横1000pxの写真で何px」に換算して扱う */
@@ -27,8 +33,23 @@ export interface Analysis {
   t: number;
   iso: number;
   focal: number;
+  /** 35mm判換算の焦点距離 */
+  equivalentFocal: number;
+  /** 有効口径 [mm] */
+  aperture: number;
+  bodyId: string;
+  digitalCrop: number;
+  sensor: Sensor;
+  /** トリミング後の画素数 [MP] */
+  megapixels: number;
+  mode: ShootingMode;
+  autoIso: boolean;
+  comp: number;
+  metering: Metering;
+  profile: ProfileId;
   focusM: number;
   meterStops: number;
+  meteredLuminance: number;
   clippedRatio: number;
   crushedRatio: number;
   /** 名前付きの位置の錯乱円（直径、横1000px換算、符号付き） */
@@ -38,6 +59,8 @@ export interface Analysis {
   shakePx: number;
   motionPx: number;
   horizontalAov: number;
+  cameraDistance: number;
+  lighting: string;
   ready: boolean;
 }
 
@@ -45,20 +68,27 @@ export function rigValues(rig: RigState) {
   return { n: F_STOPS[rig.fIndex].value, t: SS_STOPS[rig.ssIndex].value, iso: ISO_STOPS[rig.isoIndex].value };
 }
 
-export function engineSettings(
-  rig: RigState,
-  ui: { quality: Quality; zebra: boolean },
-): EngineSettings {
+/** トリミングも含めた実質のセンサー */
+export function effectiveSensor(rig: RigState): Sensor {
+  return croppedSensor(getBody(rig.bodyId), rig.digitalCrop);
+}
+
+export function engineSettings(rig: RigState, ui: { quality: Quality; zebra: boolean }): EngineSettings {
   const { n, t, iso } = rigValues(rig);
+  const lens = getLens(rig.lensId);
   return {
     n,
     t,
     iso,
     focal: rig.focal,
-    sensor: FULL_FRAME,
+    sensor: effectiveSensor(rig),
+    maxApertureN: lens.maxAperture(rig.focal),
+    profile: rig.profile,
+    lensFx: rig.lensFx,
+    metering: rig.metering,
     focusMode: rig.focusMode,
     focusM: rig.focusM,
-    minFocusM: getLens(rig.lensId).minFocusM,
+    minFocusM: lens.minFocusM,
     afPoint: rig.afPoint,
     stabilization: rig.stabilization,
     tripod: rig.tripod,
@@ -73,26 +103,41 @@ export function engineSettings(
 
 export function analyze(rig: RigState, tel: Telemetry | null): Analysis {
   const { n, t, iso } = rigValues(rig);
+  const sensor = effectiveSensor(rig);
   const focusM = tel?.focusM ?? rig.focusM;
   const coc: Record<string, number> = {};
   for (const [id, d] of Object.entries(tel?.keyDistances ?? {})) {
-    coc[id] = mmToPx(signedCoc(rig.focal, n, focusM, d), FULL_FRAME, REF_WIDTH);
+    coc[id] = mmToPx(signedCoc(rig.focal, n, focusM, d), sensor, REF_WIDTH);
   }
   return {
     n,
     t,
     iso,
     focal: rig.focal,
+    equivalentFocal: rig.focal * cropFactor(sensor),
+    aperture: apertureDiameter(rig.focal, n),
+    bodyId: rig.bodyId,
+    digitalCrop: rig.digitalCrop,
+    sensor,
+    megapixels: croppedMegapixels(getBody(rig.bodyId), rig.digitalCrop),
+    mode: rig.mode,
+    autoIso: rig.autoIso,
+    comp: rig.comp,
+    metering: rig.metering,
+    profile: rig.profile,
     focusM,
     meterStops: tel?.meterStops ?? 0,
+    meteredLuminance: tel?.meteredLuminance ?? 0,
     clippedRatio: tel?.clippedRatio ?? 0,
     crushedRatio: tel?.crushedRatio ?? 0,
     coc,
     distances: tel?.keyDistances ?? {},
-    dof: depthOfField(rig.focal, n, focusM, permissibleCoc(FULL_FRAME)),
+    dof: depthOfField(rig.focal, n, focusM, permissibleCoc(sensor)),
     shakePx: tel?.shakePx ?? 0,
     motionPx: tel?.motionPx ?? 0,
-    horizontalAov: angleOfView(rig.focal, FULL_FRAME.width),
+    horizontalAov: angleOfView(rig.focal, sensor.width),
+    cameraDistance: rig.params.distance ?? 0,
+    lighting: rig.lighting,
     ready: tel !== null,
   };
 }

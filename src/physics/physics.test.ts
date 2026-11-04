@@ -6,8 +6,23 @@ import {
   FULL_FRAME,
   MIDDLE_GRAY,
   SATURATION,
+  airyDiskMm,
   angleOfView,
   coc,
+  cropFactor,
+  cropToMatch,
+  croppedMegapixels,
+  croppedSensor,
+  equivalentFocal,
+  getBody,
+  logEncode,
+  mmToPx,
+  pixelsPerMm,
+  profileSaturation,
+  solveExposure,
+  sphericalAmount,
+  vignetteAmount,
+  wellScale,
   cocAtInfinity,
   depthOfField,
   ev100FromLuminance,
@@ -156,6 +171,142 @@ describe('ノイズ', () => {
 
   it('同じISOでも暗い部分ほどSNRが低い', () => {
     expect(snr(0.01, 400)).toBeLessThan(snr(MIDDLE_GRAY, 400));
+  });
+});
+
+describe('センササイズ', () => {
+  const apsc = getBody('apsc-24');
+  const ff = getBody('ff-24');
+
+  it('換算係数と換算焦点距離', () => {
+    expect(cropFactor(ff)).toBeCloseTo(1);
+    expect(cropFactor(apsc)).toBeCloseTo(1.53, 1);
+    expect(equivalentFocal(33, apsc)).toBeCloseTo(50.6, 0);
+  });
+
+  it('同じ画角・同じF値なら、大きいセンサーのほうが背景がボケる（画像の幅に対する割合で比較）', () => {
+    const blur = (body: typeof ff, focal: number) => mmToPx(cocAtInfinity(focal, 2.8, 3), body, 1000);
+    expect(blur(ff, 50)).toBeGreaterThan(blur(apsc, 50 / cropFactor(apsc)));
+  });
+
+  it('同じレンズ・同じF値・同じ距離なら、APS-Cとフルサイズのトリミングは同じボケ', () => {
+    const crop = cropToMatch(ff, apsc);
+    const croppedFf = croppedSensor(ff, crop);
+    const a = mmToPx(coc(200, 4, 10, 30), apsc, 1000);
+    const b = mmToPx(coc(200, 4, 10, 30), croppedFf, 1000);
+    expect(a).toBeCloseTo(b, 5);
+  });
+
+  it('同じ露出なら、APS-Cとフルサイズのトリミングは光の量もノイズも同じ', () => {
+    const croppedFf = croppedSensor(ff, cropToMatch(ff, apsc));
+    expect(snr(0.18, 800, apsc)).toBeCloseTo(snr(0.18, 800, croppedFf), 0); // 縦横比の差（0.4%）の分だけずれる
+  });
+
+  it('トリミングすると画素数は倍率の2乗で減る', () => {
+    expect(croppedMegapixels(ff, 1.5)).toBeCloseTo(24 / 2.25);
+  });
+
+  it('被写体に載る画素数は画素ピッチで決まる', () => {
+    expect(pixelsPerMm(apsc)).toBeGreaterThan(pixelsPerMm(ff));
+    // 4500万画素のフルサイズは、2400万画素のAPS-Cより少し画素密度が低い
+    expect(pixelsPerMm(getBody('ff-45')) / pixelsPerMm(apsc)).toBeCloseTo(0.89, 1);
+  });
+});
+
+describe('撮影モード', () => {
+  const base = {
+    autoIso: false,
+    luminance: 100,
+    comp: 0,
+    n: 4,
+    t: 1 / 100,
+    iso: 400,
+    minN: 1.4,
+    maxN: 22,
+    slowestT: 1 / 60,
+    minIso: 100,
+    maxIso: 12800,
+  };
+  const offset = (r: { n: number; t: number; iso: number }, l = 100) => exposureOffsetStops(l, r.t, r.iso, r.n);
+
+  it('Mモードはそのまま', () => {
+    expect(solveExposure({ ...base, mode: 'M' })).toMatchObject({ n: 4, t: 1 / 100, iso: 400 });
+  });
+
+  it('A: F値はそのままで、SSが適正露出になる', () => {
+    const r = solveExposure({ ...base, mode: 'A' });
+    expect(r.n).toBe(4);
+    expect(offset(r)).toBeCloseTo(0);
+  });
+
+  it('S: SSはそのままで、F値が適正露出になる', () => {
+    const r = solveExposure({ ...base, mode: 'S' });
+    expect(r.t).toBe(1 / 100);
+    expect(offset(r)).toBeCloseTo(0);
+  });
+
+  it('P: 明るいほど絞って速いシャッターになる', () => {
+    const bright = solveExposure({ ...base, mode: 'P', iso: 100, luminance: luminanceFromEv100(15) });
+    const dark = solveExposure({ ...base, mode: 'P', iso: 100, luminance: luminanceFromEv100(7) });
+    expect(bright.n).toBeGreaterThan(dark.n);
+    expect(bright.t).toBeLessThan(dark.t);
+    expect(bright.n).toBeCloseTo(9.5, 0);
+  });
+
+  it('露出補正の分だけ明るくなる', () => {
+    const r = solveExposure({ ...base, mode: 'A', comp: 1 });
+    expect(offset(r)).toBeCloseTo(1);
+  });
+
+  it('範囲外では値が頭打ちになり、露出が足りなくなる', () => {
+    const r = solveExposure({ ...base, mode: 'S', t: 1 / 8000, iso: 100, luminance: 1 });
+    expect(r.n).toBe(1.4);
+    expect(offset(r, 1)).toBeLessThan(-5);
+  });
+
+  it('オートISO: Aモードで暗いと、SSの下限を守ってISOを上げる', () => {
+    const l = luminanceFromEv100(3);
+    const r = solveExposure({ ...base, mode: 'A', autoIso: true, n: 2.8, luminance: l });
+    expect(r.t).toBeCloseTo(1 / 60);
+    expect(r.iso).toBeGreaterThan(400);
+    expect(offset(r, l)).toBeCloseTo(0);
+  });
+
+  it('オートISO: 明るければ最低ISOのまま', () => {
+    const l = luminanceFromEv100(13);
+    const r = solveExposure({ ...base, mode: 'A', autoIso: true, n: 2.8, luminance: l });
+    expect(r.iso).toBe(100);
+    expect(offset(r, l)).toBeCloseTo(0);
+  });
+});
+
+describe('Log', () => {
+  it('Logは標準より約3段ハイライトに余裕がある', () => {
+    expect(Math.log2(profileSaturation('log') / profileSaturation('standard'))).toBeCloseTo(3, 0);
+  });
+
+  it('同じ光なら電子数は同じなので、同じ明るさのノイズは同じ', () => {
+    const electrons = (id: 'standard' | 'log', iso: number) =>
+      (0.18 / profileSaturation(id)) * saturationElectrons(iso) * wellScale(id);
+    expect(electrons('log', 800)).toBeCloseTo(electrons('standard', 800));
+  });
+
+  it('記録値: 中間グレーは41%で、明るいほど大きい', () => {
+    expect(logEncode(0.18)).toBeCloseTo(0.41);
+    expect(logEncode(0.36)).toBeGreaterThan(logEncode(0.18));
+    expect(logEncode(profileSaturation('log'))).toBeLessThan(1);
+  });
+});
+
+describe('収差と回折', () => {
+  it('回折のボケはF値に比例する', () => {
+    expect(airyDiskMm(16) / airyDiskMm(8)).toBeCloseTo(2);
+    expect(airyDiskMm(8)).toBeCloseTo(0.0107, 3);
+  });
+
+  it('絞ると球面収差と周辺減光は減る', () => {
+    expect(sphericalAmount(1, 2.8, 1.4)).toBeLessThan(sphericalAmount(1, 1.4, 1.4));
+    expect(vignetteAmount(1, 5.6, 1.4)).toBeLessThan(vignetteAmount(1, 1.4, 1.4));
   });
 });
 

@@ -32,6 +32,7 @@ export function InfoBar() {
   const tel = useTelemetry();
   return (
     <div className="info-bar">
+      <span className="ib-item ib-mode">{rig.mode}</span>
       <span className="ib-item">
         <small>SS</small>
         {SS_STOPS[rig.ssIndex].label}
@@ -83,6 +84,57 @@ export function Histogram() {
       <div className="hist-axis">
         <span>暗い</span>
         <span>明るい</span>
+      </div>
+    </div>
+  );
+}
+
+/** 上から見た図。カメラ・被写体・背景の位置と画角を示す（距離は対数ではなく実距離） */
+export function TopView() {
+  const a = useAnalysis();
+  const hasColumns = useRig((r) => r.sceneId === 'garden');
+  const camD = a.cameraDistance;
+  const subject = a.distances.subject;
+  if (!a.ready || !camD || subject === undefined) return <div className="top-view" />;
+  const W = 640;
+  const H = 110;
+  const camX = 24;
+  const cy = H / 2;
+  // 被写体の奥36mまで描く。庭園シーンでは6m間隔の列柱が距離の目盛りになる
+  const range = subject + 36;
+  const scale = (W - camX - 12) / range;
+  const half = (a.horizontalAov * Math.PI) / 360;
+  const spread = Math.tan(half) * (W - camX);
+  const subjectX = camX + subject * scale;
+  const widthAtSubject = 2 * Math.tan(half) * subject;
+  return (
+    <div className="top-view">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="上から見たカメラと被写体の位置">
+        <polygon points={`${camX},${cy} ${W},${cy - spread} ${W},${cy + spread}`} className="tv-fov" />
+        <line x1={0} y1={cy} x2={W} y2={cy} className="tv-axis" />
+        {hasColumns &&
+          Array.from({ length: 6 }, (_, i) => {
+            const x = subjectX + (i + 1) * 6 * scale;
+            return x < W ? (
+              <g key={i}>
+                <circle cx={x} cy={cy - 3.2 * scale} r={2.5} className="tv-column" />
+                <circle cx={x} cy={cy + 3.2 * scale} r={2.5} className="tv-column" />
+              </g>
+            ) : null;
+          })}
+        <rect x={camX - 12} y={cy - 7} width={12} height={14} rx={2} className="tv-camera" />
+        <circle cx={subjectX} cy={cy} r={5} className="tv-subject" />
+        <text x={subjectX} y={cy + 22} textAnchor="middle" className="tv-text">
+          胸像 {subject.toFixed(1)}m
+        </text>
+      </svg>
+      <div className="dof-legend">
+        <span>
+          画角 {a.horizontalAov.toFixed(1)}°（35mm判換算 {Math.round(a.equivalentFocal)}mm）
+        </span>
+        <span className="muted">
+          被写体の位置で写る幅 {widthAtSubject.toFixed(1)}m{hasColumns && ' / 柱は6m間隔'}
+        </span>
       </div>
     </div>
   );
