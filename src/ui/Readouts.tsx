@@ -1,0 +1,137 @@
+// ファインダー周りの表示: 情報バー（露出計つき）、ヒストグラム、被写界深度バー。
+
+import { F_STOPS, ISO_STOPS, SS_STOPS, formatStops } from '../physics';
+import { SHARP_PX } from '../store/analysis';
+import { useAnalysis, useRig, useTelemetry } from './RigContext';
+
+/** カメラの露出計（−3〜+3段） */
+export function ExposureMeter({ stops }: { stops: number }) {
+  const clamped = Math.max(-3.2, Math.min(3.2, stops));
+  const ticks = [];
+  for (let i = -9; i <= 9; i++) {
+    ticks.push(
+      <span key={i} className={`em-tick ${i % 3 === 0 ? 'major' : ''}`} style={{ left: `${50 + (i / 9) * 46}%` }}>
+        {i % 3 === 0 && <b>{i === 0 ? '0' : Math.abs(i / 3)}</b>}
+      </span>,
+    );
+  }
+  return (
+    <div className="exposure-meter" title="測光した明るさに対して、何段明るく（+）／暗く（−）写るか">
+      <span className="em-sign">−</span>
+      <div className="em-scale">
+        {ticks}
+        <span className={`em-needle ${Math.abs(stops) > 3 ? 'over' : ''}`} style={{ left: `${50 + (clamped / 3) * 46}%` }} />
+      </div>
+      <span className="em-sign">+</span>
+    </div>
+  );
+}
+
+export function InfoBar() {
+  const rig = useRig((r) => r);
+  const tel = useTelemetry();
+  return (
+    <div className="info-bar">
+      <span className="ib-item">
+        <small>SS</small>
+        {SS_STOPS[rig.ssIndex].label}
+      </span>
+      <span className="ib-item">
+        <small>F</small>
+        {F_STOPS[rig.fIndex].label}
+      </span>
+      <span className="ib-item">
+        <small>ISO</small>
+        {ISO_STOPS[rig.isoIndex].label}
+      </span>
+      <span className="ib-item">
+        <small>焦点距離</small>
+        {Math.round(rig.focal)}mm
+      </span>
+      <ExposureMeter stops={tel?.meterStops ?? 0} />
+      <span className="ib-item ib-ev">{tel ? formatStops(tel.meterStops) : '—'}</span>
+    </div>
+  );
+}
+
+export function Histogram() {
+  const tel = useTelemetry();
+  const bins = tel?.histogram ?? new Array(64).fill(0);
+  const peak = Math.max(...bins, 1e-6);
+  const clipped = (tel?.clippedRatio ?? 0) > 0.003;
+  const crushed = (tel?.crushedRatio ?? 0) > 0.02;
+  const pct = (r: number) => (r < 0.01 ? '1%未満' : `${Math.round(r * 100)}%`);
+  return (
+    <div className="histogram">
+      <div className="hist-head">
+        <span>ヒストグラム</span>
+        <span className="hist-flags">
+          {crushed && <em className="flag dark">黒つぶれ {pct(tel?.crushedRatio ?? 0)}</em>}
+          {clipped && <em className="flag bright">白飛び {pct(tel?.clippedRatio ?? 0)}</em>}
+        </span>
+      </div>
+      <svg viewBox="0 0 64 32" preserveAspectRatio="none">
+        <rect x="0" y="0" width="64" height="32" className="hist-bg" />
+        {[16, 32, 48].map((x) => (
+          <line key={x} x1={x} x2={x} y1={0} y2={32} className="hist-grid" />
+        ))}
+        {bins.map((b, i) => {
+          const h = Math.sqrt(b / peak) * 31;
+          return <rect key={i} x={i} y={32 - h} width={1} height={h} className="hist-bar" />;
+        })}
+      </svg>
+      <div className="hist-axis">
+        <span>暗い</span>
+        <span>明るい</span>
+      </div>
+    </div>
+  );
+}
+
+const BAR_MIN = 0.3;
+const BAR_MAX = 30;
+const pos = (m: number) =>
+  `${(Math.log(Math.min(BAR_MAX, Math.max(BAR_MIN, m)) / BAR_MIN) / Math.log(BAR_MAX / BAR_MIN)) * 100}%`;
+
+/** 距離の目盛り上に、ピントの合う範囲と被写体・背景の位置を示す */
+export function DofBar() {
+  const a = useAnalysis();
+  if (!a.ready) return <div className="dof-bar" />;
+  const far = Number.isFinite(a.dof.far) ? a.dof.far : BAR_MAX;
+  const markers: { id: string; label: string }[] = [
+    { id: 'foreground', label: '手前' },
+    { id: 'subject', label: '被写体' },
+    { id: 'background', label: '背景' },
+  ];
+  return (
+    <div className="dof-bar">
+      <div className="dof-track">
+        <div className="dof-range" style={{ left: pos(a.dof.near), width: `calc(${pos(far)} - ${pos(a.dof.near)})` }} />
+        <div className="dof-focus" style={{ left: pos(a.focusM) }} />
+        {[0.5, 1, 2, 5, 10, 20].map((m) => (
+          <span key={m} className="dof-scale" style={{ left: pos(m) }}>
+            {m}m
+          </span>
+        ))}
+        {markers
+          .filter((m) => a.distances[m.id] !== undefined && a.distances[m.id] > 0)
+          .map((m) => {
+            const c = Math.abs(a.coc[m.id] ?? 0);
+            return (
+              <span key={m.id} className={`dof-marker ${c <= SHARP_PX ? 'sharp' : ''}`} style={{ left: pos(a.distances[m.id]) }}>
+                <i />
+                {m.label}
+                <small>ボケ {c < 0.95 ? '0' : c.toFixed(c < 10 ? 1 : 0)}px</small>
+              </span>
+            );
+          })}
+      </div>
+      <div className="dof-legend">
+        <span>
+          ピントの合う範囲: {a.dof.near.toFixed(2)}m 〜 {Number.isFinite(a.dof.far) ? `${a.dof.far.toFixed(2)}m` : '∞'}
+        </span>
+        <span className="muted">ボケの大きさは横1000pxの写真に換算した直径</span>
+      </div>
+    </div>
+  );
+}
