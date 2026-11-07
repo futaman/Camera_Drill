@@ -14,6 +14,15 @@ export interface SceneParam {
   step: number;
   default: number;
   unit: string;
+  /** 指定すると、スライダーの代わりに選択肢で表示する */
+  options?: { value: number; label: string }[];
+}
+
+/** よく使う設定のひとまとめ */
+export interface ScenePreset {
+  id: string;
+  label: string;
+  params: Record<string, number>;
 }
 
 /** 学習の判定や補助表示に使う、名前付きの位置 */
@@ -50,6 +59,7 @@ export interface SceneDef {
   description: string;
   lighting: LightingPreset[];
   params: SceneParam[];
+  presets?: ScenePreset[];
   create(): SceneInstance;
 }
 

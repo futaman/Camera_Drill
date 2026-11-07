@@ -1,21 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { F_STOPS, ISO_STOPS, SS_STOPS, formatStops } from '../physics';
+import { F_STOPS, ISO_STOPS, SS_STOPS, croppedMegapixels, formatStops, getBody, getProfile } from '../physics';
 import { getScene } from '../scenes';
+import { MAX_SHOTS, deleteShot, loadShots, saveShot, type Shot } from '../store/gallery';
 import { useSimulatorRig } from '../store/rig';
 import { useSettings } from '../store/settings';
 import { ControlPanel } from './ControlPanel';
-import { DofBar, Histogram, InfoBar } from './Readouts';
-import { RigProvider, useEngineRef, useRigApi } from './RigContext';
+import { DofBar, Histogram, InfoBar, TopView } from './Readouts';
+import { RigProvider, useEngineRef, useRig, useRigApi } from './RigContext';
 import { Viewfinder } from './Viewfinder';
-
-interface Shot {
-  id: number;
-  dataUrl: string;
-  caption: string;
-  detail: string;
-}
-
-const MAX_SHOTS = 8;
 
 export function SimulatorPage() {
   return (
@@ -29,26 +21,35 @@ function Simulator() {
   const engineRef = useEngineRef();
   const rigApi = useRigApi();
   const dofBar = useSettings((s) => s.dofBar);
+  const topView = useSettings((s) => s.topView);
+  const sceneId = useRig((r) => r.sceneId);
   const [capturing, setCapturing] = useState(false);
   const [shots, setShots] = useState<Shot[]>([]);
   const [viewing, setViewing] = useState<number[]>([]);
+
+  useEffect(() => {
+    void loadShots().then(setShots);
+  }, []);
 
   const shoot = useCallback(async () => {
     const engine = engineRef.current;
     if (!engine || capturing) return;
     setCapturing(true);
     await new Promise((r) => setTimeout(r, 30));
-    const { dataUrl, telemetry } = await engine.capture();
+    const { dataUrl, telemetry } = await engine.capture().finally(() => setCapturing(false));
     const r = rigApi.getState();
     const shot: Shot = {
       id: Date.now(),
       dataUrl,
       caption: `F${F_STOPS[r.fIndex].label}  ${SS_STOPS[r.ssIndex].label}  ISO${ISO_STOPS[r.isoIndex].label}  ${Math.round(r.focal)}mm`,
-      detail: `${getScene(r.sceneId).name} / 露出 ${formatStops(telemetry.meterStops)}段 / ピント ${telemetry.focusM.toFixed(2)}m`,
+      detail: `${getBody(r.bodyId).name}（${croppedMegapixels(getBody(r.bodyId), r.digitalCrop).toFixed(1)}MP） / ${getProfile(r.profile).name} / ${getScene(r.sceneId).name} / 露出 ${formatStops(telemetry.meterStops)}段 / ピント ${telemetry.focusM.toFixed(2)}m`,
     };
-    setShots((s) => [shot, ...s].slice(0, MAX_SHOTS));
+    void saveShot(shot);
+    setShots((s) => {
+      s.slice(MAX_SHOTS - 1).forEach((old) => void deleteShot(old.id));
+      return [shot, ...s].slice(0, MAX_SHOTS);
+    });
     setViewing([shot.id]);
-    setCapturing(false);
   }, [engineRef, rigApi, capturing]);
 
   useEffect(() => {
@@ -67,6 +68,12 @@ function Simulator() {
   const toggleCompare = (id: number) =>
     setViewing((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id].slice(-2)));
 
+  const removeViewed = () => {
+    viewing.forEach((id) => void deleteShot(id));
+    setShots((s) => s.filter((x) => !viewing.includes(x.id)));
+    setViewing([]);
+  };
+
   const viewed = viewing.map((id) => shots.find((s) => s.id === id)).filter((s): s is Shot => !!s);
 
   return (
@@ -75,6 +82,7 @@ function Simulator() {
         <Viewfinder capturing={capturing} />
         <InfoBar />
         {dofBar && <DofBar />}
+        {(topView || sceneId === 'studio') && <TopView />}
         {shots.length > 0 && (
           <div className="shot-strip">
             <span className="muted">撮った写真（クリックで表示、2枚選ぶと比較）</span>
@@ -128,6 +136,7 @@ function Simulator() {
                 ))}
               </div>
               <span className="muted">2枚選ぶと並べて比較。Esc で閉じる</span>
+              <button onClick={removeViewed}>表示中の写真を消す</button>
               <button onClick={() => setViewing([])}>ライブビューに戻る</button>
             </div>
           </div>

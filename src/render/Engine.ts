@@ -8,16 +8,26 @@ import * as THREE from 'three';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import {
   FULL_FRAME,
+  LOG_GRAY,
+  LOG_SLOPE,
   METER_K,
   READ_NOISE,
   SATURATION,
+  airyDiskMm,
   exposureScale,
+  logEncode,
   makeShakePath,
   mmToPx,
+  profileSaturation,
   saturationElectrons,
   shakeBlurMm,
   shakeGain,
   signedCoc,
+  sphericalAmount,
+  vignetteAmount,
+  wellScale,
+  type LensFx,
+  type ProfileId,
   type Sensor,
 } from '../physics';
 import { getScene, type SceneDef, type SceneInstance } from '../scenes';
@@ -26,6 +36,7 @@ import {
   dofFrag,
   finalFrag,
   fullscreenVert,
+  lensFrag,
   meterFrag,
   packFrag,
   tileDilateFrag,
@@ -33,13 +44,20 @@ import {
 } from './shaders';
 
 export type Quality = 'low' | 'standard' | 'high';
+export type Metering = 'evaluative' | 'center' | 'spot';
 
 export interface EngineSettings {
   n: number;
   t: number;
   iso: number;
   focal: number;
+  /** トリミング後の実質のセンサー */
   sensor: Sensor;
+  /** レンズの開放F値（収差の強さの基準） */
+  maxApertureN: number;
+  profile: ProfileId;
+  lensFx: LensFx;
+  metering: Metering;
   focusMode: 'af' | 'mf';
   focusM: number;
   minFocusM: number;
@@ -121,7 +139,7 @@ function shader(frag: string, uniforms: Record<string, THREE.IUniform>, blending
 
 export class Engine {
   private renderer: THREE.WebGLRenderer;
-  private camera = new THREE.PerspectiveCamera(40, 1.5, 0.05, 40);
+  private camera = new THREE.PerspectiveCamera(40, 1.5, 0.05, 1000);
   private quad = new FullScreenQuad();
   private raycaster = new THREE.Raycaster();
 
@@ -133,6 +151,7 @@ export class Engine {
   private tileRT!: THREE.WebGLRenderTarget;
   private tileDilatedRT!: THREE.WebGLRenderTarget;
   private dofRT!: THREE.WebGLRenderTarget;
+  private lensRT!: THREE.WebGLRenderTarget;
   private meterRT: THREE.WebGLRenderTarget;
   private histRT: THREE.WebGLRenderTarget;
   private meterBuf = new Float32Array(METER_SIZE * METER_SIZE * 4);
@@ -163,11 +182,26 @@ export class Engine {
     uTexel: { value: new THREE.Vector2() },
     uBudget: { value: 128 },
   });
+  private matLens = shader(lensFrag, {
+    tColor: { value: null },
+    uTexel: { value: new THREE.Vector2() },
+    uAspect: { value: 1.5 },
+    uCa: { value: 0 },
+    uDist: { value: 0 },
+    uVignette: { value: 0 },
+    uSoftR: { value: 0 },
+    uSoftMix: { value: 0 },
+    uDiffR: { value: 0 },
+  });
   private matMeter = shader(meterFrag, { tSrc: { value: null }, uCell: { value: new THREE.Vector2(1 / METER_SIZE, 1 / METER_SIZE) } });
   private matFinal = shader(finalFrag, {
     tColor: { value: null },
     uScale: { value: 1 },
     uSat: { value: SATURATION },
+    uStdSat: { value: SATURATION },
+    uProfile: { value: 0 },
+    uLogGray: { value: LOG_GRAY },
+    uLogSlope: { value: LOG_SLOPE },
     uWell: { value: 1000 },
     uRead: { value: READ_NOISE },
     uSeed: { value: 0 },
@@ -188,6 +222,8 @@ export class Engine {
   private telemetry: Telemetry | null = null;
   private listeners = new Set<(t: Telemetry) => void>();
   private paused = false;
+  private disposed = false;
+  private shadowDirty = true;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -195,6 +231,8 @@ export class Engine {
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // 影は物が動くときと照明を変えたときだけ描き直す（屋外の大きな影の負荷を減らす）
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.setPixelRatio(1);
     this.camera.filmGauge = FULL_FRAME.width;
     this.meterRT = new THREE.WebGLRenderTarget(METER_SIZE, METER_SIZE, { type: THREE.FloatType, depthBuffer: false });
@@ -217,12 +255,15 @@ export class Engine {
   private allocate(w: number, h: number): void {
     this.width = w;
     this.height = h;
-    [this.sceneRT, this.accumRT, this.packRT, this.tileRT, this.tileDilatedRT, this.dofRT].forEach((rt) => rt?.dispose());
+    [this.sceneRT, this.accumRT, this.packRT, this.tileRT, this.tileDilatedRT, this.dofRT, this.lensRT].forEach((rt) =>
+      rt?.dispose(),
+    );
     const depthTexture = new THREE.DepthTexture(w, h, THREE.FloatType);
     this.sceneRT = hdrTarget(w, h, { depthBuffer: true, depthTexture });
     this.accumRT = hdrTarget(w, h);
     this.packRT = hdrTarget(w, h);
     this.dofRT = hdrTarget(w, h);
+    this.lensRT = hdrTarget(w, h);
     const tw = Math.ceil(w / TILE);
     const th = Math.ceil(h / TILE);
     const nearest = { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter };
@@ -241,7 +282,10 @@ export class Engine {
     }
     if (this.settings?.lighting !== s.lighting || this.settings?.sceneId !== s.sceneId) {
       this.sceneInst!.setLighting(s.lighting);
+      this.shadowDirty = true;
     }
+    // ライトの位置はパラメータで変わるので、変わったら影を描き直す
+    if (this.settings?.params !== s.params) this.shadowDirty = true;
     this.settings = s;
     if (s.focusMode === 'mf') this.focusM = Math.max(s.minFocusM, s.focusM);
     if (qualityChanged) {
@@ -261,6 +305,7 @@ export class Engine {
 
   start(): void {
     const loop = (now: number) => {
+      if (this.disposed) return;
       this.raf = requestAnimationFrame(loop);
       if (this.paused || !this.settings) return;
       if (this.lastFrameTime) {
@@ -277,28 +322,47 @@ export class Engine {
     cancelAnimationFrame(this.raf);
   }
 
-  /** 高品質で1枚撮影し、PNG の data URL を返す */
+  /** 高品質で1枚撮影し、JPEG の data URL を返す */
   async capture(): Promise<{ dataUrl: string; telemetry: Telemetry }> {
     this.paused = true;
     await new Promise((r) => requestAnimationFrame(r));
+    if (this.disposed) throw new Error('エンジンは破棄されました');
     this.shakePath = makeShakePath(Math.floor(Math.random() * 100000));
     this.renderFrame(performance.now() / 1000, true);
-    const dataUrl = this.canvas.toDataURL('image/png');
+    const dataUrl = this.canvas.toDataURL('image/jpeg', 0.92);
     this.paused = false;
     return { dataUrl, telemetry: this.telemetry! };
   }
 
   dispose(): void {
+    this.disposed = true;
     this.stop();
     this.sceneInst?.dispose();
-    [this.sceneRT, this.accumRT, this.packRT, this.tileRT, this.tileDilatedRT, this.dofRT, this.meterRT, this.histRT].forEach(
-      (rt) => rt.dispose(),
-    );
-    [this.matAccum, this.matPack, this.matTileMax, this.matTileDilate, this.matDof, this.matMeter, this.matFinal].forEach((m) =>
-      m.dispose(),
-    );
+    [
+      this.sceneRT,
+      this.accumRT,
+      this.packRT,
+      this.tileRT,
+      this.tileDilatedRT,
+      this.dofRT,
+      this.lensRT,
+      this.meterRT,
+      this.histRT,
+    ].forEach((rt) => rt.dispose());
+    [
+      this.matAccum,
+      this.matPack,
+      this.matTileMax,
+      this.matTileDilate,
+      this.matDof,
+      this.matLens,
+      this.matMeter,
+      this.matFinal,
+    ].forEach((m) => m.dispose());
     this.quad.dispose();
     this.renderer.dispose();
+    // ブラウザが同時に持てるコンテキスト数には上限があるので、すぐに解放する
+    this.renderer.forceContextLoss();
   }
 
   private pass(material: THREE.ShaderMaterial, target: THREE.WebGLRenderTarget | null, clear = true): void {
@@ -312,6 +376,7 @@ export class Engine {
   private placeCamera(): void {
     const s = this.settings!;
     const pose = this.sceneInst!.cameraPose(s.params);
+    this.camera.filmGauge = s.sensor.width;
     this.camera.setFocalLength(s.focal);
     this.camera.position.copy(pose.position);
     this.camera.lookAt(pose.target);
@@ -380,6 +445,10 @@ export class Engine {
       this.renderer.setRenderTarget(this.sceneRT);
       this.renderer.setClearColor(0x000000, 1);
       this.renderer.clear();
+      if (this.shadowDirty || motion.speed > 0) {
+        this.renderer.shadowMap.needsUpdate = true;
+        this.shadowDirty = false;
+      }
       this.renderer.render(inst.scene, this.camera);
       if (subframes > 1) {
         this.matAccum.uniforms.tSrc.value = this.sceneRT.texture;
@@ -427,11 +496,31 @@ export class Engine {
     du.uBudget.value = shot ? q.shotBudget : q.budget;
     this.pass(this.matDof, this.dofRT);
 
+    // 収差と回折
+    const fx = s.lensFx;
+    let developed = this.dofRT.texture;
+    if (fx.chromatic > 0 || fx.distortion !== 0 || fx.vignette > 0 || fx.spherical > 0 || fx.diffraction > 0) {
+      const lu = this.matLens.uniforms;
+      lu.tColor.value = this.dofRT.texture;
+      lu.uTexel.value.set(1 / w, 1 / h);
+      lu.uAspect.value = w / h;
+      lu.uCa.value = fx.chromatic * 0.008;
+      lu.uDist.value = -fx.distortion * 0.35;
+      lu.uVignette.value = Math.min(0.95, vignetteAmount(fx.vignette, s.n, s.maxApertureN));
+      lu.uSoftR.value = w * 0.012;
+      lu.uSoftMix.value = Math.min(0.85, sphericalAmount(fx.spherical, s.n, s.maxApertureN));
+      lu.uDiffR.value = (airyDiskMm(s.n) / 2) * pxPerMm * fx.diffraction;
+      this.pass(this.matLens, this.lensRT);
+      developed = this.lensRT.texture;
+    }
+
     // 露出・ノイズ・現像
     const fu = this.matFinal.uniforms;
-    fu.tColor.value = this.dofRT.texture;
+    fu.tColor.value = developed;
     fu.uScale.value = exposureScale(s.t, s.iso, s.n);
-    fu.uWell.value = saturationElectrons(s.iso, s.sensor);
+    fu.uSat.value = profileSaturation(s.profile);
+    fu.uProfile.value = s.profile === 'standard' ? 0 : s.profile === 'log' ? 1 : 2;
+    fu.uWell.value = saturationElectrons(s.iso, s.sensor) * wellScale(s.profile);
     fu.uSeed.value = shot ? Math.random() * 1000 : this.frame % 97;
     fu.uNoise.value = s.noise ? 1 : 0;
     fu.uZebra.value = s.zebra && !shot ? 1 : 0;
@@ -439,7 +528,7 @@ export class Engine {
     this.pass(this.matFinal, null);
 
     this.frame++;
-    if (shot || this.frame % 6 === 0) {
+    if (shot || this.frame % 6 === 1) {
       this.measure(color, s, { focusM: this.focusM, keyDistances, shakePx, motionPx, subframes, w });
     }
   }
@@ -454,7 +543,9 @@ export class Engine {
     this.pass(this.matMeter, this.meterRT);
     this.renderer.readRenderTargetPixels(this.meterRT, 0, 0, METER_SIZE, METER_SIZE, this.meterBuf);
 
-    // 中央重点の評価測光: 極端に明るい点（光源など）の影響を抑えてから平均する
+    // 評価測光: 中央寄りの重みで、極端に明るい点（光源など）の影響を抑えて平均する
+    // 中央重点: より中央に絞り、明るい点も抑えない
+    // スポット: AFポイントのごく狭い範囲だけを測る
     let wSum = 0;
     let logSum = 0;
     const lum: number[] = [];
@@ -463,9 +554,17 @@ export class Engine {
       for (let x = 0; x < METER_SIZE; x++) {
         const i = (y * METER_SIZE + x) * 4;
         const l = 0.2126 * this.meterBuf[i] + 0.7152 * this.meterBuf[i + 1] + 0.0722 * this.meterBuf[i + 2];
-        const dx = (x + 0.5) / METER_SIZE - 0.5;
-        const dy = (y + 0.5) / METER_SIZE - 0.5;
-        const wgt = Math.exp(-(dx * dx + dy * dy) / 0.04);
+        const u = (x + 0.5) / METER_SIZE;
+        const v = (y + 0.5) / METER_SIZE;
+        let wgt: number;
+        if (s.metering === 'spot') {
+          const dx = u - s.afPoint[0];
+          const dy = v - (1 - s.afPoint[1]);
+          wgt = Math.exp(-(dx * dx + dy * dy) / 0.002);
+        } else {
+          const r2 = (u - 0.5) ** 2 + (v - 0.5) ** 2;
+          wgt = Math.exp(-r2 / (s.metering === 'center' ? 0.02 : 0.04));
+        }
         lum.push(l);
         weights.push(wgt);
         wSum += wgt;
@@ -474,7 +573,8 @@ export class Engine {
     }
     const logAvg = Math.exp(logSum / wSum);
     let metered = 0;
-    lum.forEach((l, i) => (metered += weights[i] * Math.min(l, logAvg * 12)));
+    const cap = s.metering === 'evaluative' ? logAvg * 12 : Infinity;
+    lum.forEach((l, i) => (metered += weights[i] * Math.min(l, cap)));
     metered /= wSum;
 
     // ヒストグラム: 仕上がり画像を縮小して集計
@@ -484,13 +584,15 @@ export class Engine {
     let clipped = 0;
     let crushed = 0;
     const total = HIST_W * HIST_H;
+    // 白飛びとみなす表示値。Log の記録値は飽和しても 100% にならない
+    const clipLevel = s.profile === 'log' ? logEncode(profileSaturation('log')) * 255 - 1 : s.profile === 'log-lut' ? 252 : 254;
     for (let i = 0; i < total; i++) {
       const r = this.histBuf[i * 4];
       const g = this.histBuf[i * 4 + 1];
       const b = this.histBuf[i * 4 + 2];
       const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
       bins[Math.min(63, Math.floor(y / 4))]++;
-      if (Math.max(r, g, b) >= 254) clipped++;
+      if (Math.max(r, g, b) >= clipLevel) clipped++;
       if (Math.max(r, g, b) <= 3) crushed++;
     }
 
