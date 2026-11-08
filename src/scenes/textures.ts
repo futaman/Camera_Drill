@@ -119,6 +119,36 @@ export function turntableTexture(): THREE.CanvasTexture {
   });
 }
 
+function speckle(base: [number, number, number], spread: number, seed: number, strokes: number): THREE.CanvasTexture {
+  const rand = rng(seed);
+  const tex = makeCanvas(512, 512, (ctx) => {
+    ctx.fillStyle = `rgb(${base[0]}, ${base[1]}, ${base[2]})`;
+    ctx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < strokes; i++) {
+      const d = (rand() - 0.5) * spread;
+      ctx.fillStyle = `rgb(${base[0] + d}, ${base[1] + d}, ${base[2] + d * 0.7})`;
+      ctx.fillRect(rand() * 512, rand() * 512, 1 + rand() * 3, 1 + rand() * 6);
+    }
+  });
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/** 芝生 */
+export function grassTexture(): THREE.CanvasTexture {
+  return speckle([78, 112, 52], 46, 21, 16000);
+}
+
+/** 砂利の小道 */
+export function gravelTexture(): THREE.CanvasTexture {
+  return speckle([150, 140, 122], 60, 33, 14000);
+}
+
+/** 石材（列柱と台座） */
+export function stoneTexture(): THREE.CanvasTexture {
+  return speckle([176, 170, 158], 22, 47, 8000);
+}
+
 /** 本の背表紙の色 */
 export function bookColors(count: number, seed: number): THREE.Color[] {
   const rand = rng(seed);

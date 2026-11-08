@@ -52,6 +52,10 @@ export function SettingsPage() {
           <input type="checkbox" checked={s.dofBar} onChange={(e) => s.set({ dofBar: e.target.checked })} />
           被写界深度バー（シミュレーター）
         </label>
+        <label className="toggle">
+          <input type="checkbox" checked={s.topView} onChange={(e) => s.set({ topView: e.target.checked })} />
+          上から見た図（シミュレーター）
+        </label>
       </section>
 
       <section>
@@ -64,7 +68,7 @@ export function SettingsPage() {
 
       <section>
         <h3>データ</h3>
-        <p className="muted">設定と講座の進捗は、このブラウザの中だけに保存されます。</p>
+        <p className="muted">設定、講座の進捗、撮った写真（最大50枚）は、このブラウザの中だけに保存されます。</p>
         <div className="row">
           <button
             onClick={() => {

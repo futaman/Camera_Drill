@@ -35,6 +35,47 @@ function hairGeometry(): THREE.BufferGeometry {
   return geo;
 }
 
+/** ガウス関数の盛り上がり（負ならくぼみ）。cx, cy は正面から見た位置（-1〜1） */
+function bump(x: number, y: number, cx: number, cy: number, sx: number, sy: number, height: number): number {
+  const dx = (x - cx) / sx;
+  const dy = (y - cy) / sy;
+  return height * Math.exp(-(dx * dx + dy * dy));
+}
+
+/** 顔の彫りを、球の表面の盛り上がりとくぼみで作る。光の当たり方で陰影が出るよう1枚の面にする */
+function headGeometry(): THREE.BufferGeometry {
+  const geo = mergeVertices(new THREE.SphereGeometry(1, 128, 96).deleteAttribute('normal').deleteAttribute('uv'));
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    // 正面側だけ彫る
+    const front = Math.min(1, Math.max(0, z / 0.35));
+    const r =
+      1 +
+      front *
+        (bump(x, y, 0, -0.08, 0.1, 0.3, 0.24) + // 鼻筋
+          bump(x, y, 0, -0.3, 0.13, 0.09, 0.1) + // 鼻先
+          bump(x, y, 0, 0.3, 0.6, 0.08, 0.05) + // 眉
+          bump(x, y, -0.32, 0.12, 0.17, 0.09, -0.1) + // 眼窩
+          bump(x, y, 0.32, 0.12, 0.17, 0.09, -0.1) +
+          bump(x, y, -0.32, 0.12, 0.09, 0.05, 0.05) + // まぶた
+          bump(x, y, 0.32, 0.12, 0.09, 0.05, 0.05) +
+          bump(x, y, -0.48, -0.22, 0.2, 0.2, 0.045) + // 頬
+          bump(x, y, 0.48, -0.22, 0.2, 0.2, 0.045) +
+          bump(x, y, 0, -0.5, 0.2, 0.035, 0.06) + // 上唇
+          bump(x, y, 0, -0.58, 0.28, 0.018, -0.03) + // 口
+          bump(x, y, 0, -0.65, 0.17, 0.04, 0.06) + // 下唇
+          bump(x, y, 0, -0.86, 0.22, 0.12, 0.1)); // あご
+    // あごに向かって細くする
+    const taper = 1 - 0.26 * Math.min(1, Math.max(0, -y));
+    pos.setXYZ(i, x * r * taper, y * r, z * r);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
 /** 胸像。原点は台座の底面中央で、高さは約0.68m。正面は +z */
 export function createBust(): THREE.Group {
   const mat = plasterMaterial();
@@ -60,15 +101,10 @@ export function createBust(): THREE.Group {
 
   // 頭部
   const headY = 0.56;
-  add(new THREE.SphereGeometry(0.1, 64, 48), 0, headY, 0, 0.8, 1.0, 0.94);
-  add(new THREE.SphereGeometry(0.066, 48, 32), 0, headY - 0.055, 0.028, 0.88, 0.8, 1.0); // 顎
-  add(new THREE.SphereGeometry(0.03, 24, 16), 0, headY + 0.022, 0.078, 2.2, 0.55, 0.9); // 眉
-  const nose = add(new THREE.ConeGeometry(0.017, 0.05, 16), 0, headY - 0.008, 0.094);
-  nose.rotation.x = Math.PI / 2 + 0.35;
-  add(new THREE.SphereGeometry(0.02, 24, 16), 0, headY - 0.06, 0.084, 1.4, 0.45, 0.6); // 唇
+  add(headGeometry(), 0, headY, 0, 0.08, 0.112, 0.094);
   add(new THREE.SphereGeometry(0.02, 24, 16), -0.08, headY, -0.005, 0.5, 1.4, 0.9); // 耳
   add(new THREE.SphereGeometry(0.02, 24, 16), 0.08, headY, -0.005, 0.5, 1.4, 0.9);
-  add(hairGeometry(), 0, headY + 0.028, -0.025, 0.84, 0.92, 0.95);
+  add(hairGeometry(), 0, headY + 0.04, -0.035, 0.84, 0.86, 0.93);
 
   return shadowed(g);
 }

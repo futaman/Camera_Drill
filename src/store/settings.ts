@@ -12,6 +12,7 @@ export interface Settings {
   zebra: boolean;
   grid: boolean;
   dofBar: boolean;
+  topView: boolean;
   showAdvanced: boolean;
   set(patch: Partial<Omit<Settings, 'set'>>): void;
 }
@@ -25,6 +26,7 @@ export const useSettings = create<Settings>()(
       zebra: true,
       grid: false,
       dofBar: true,
+      topView: false,
       showAdvanced: false,
       set: (patch) => set(patch),
     }),
